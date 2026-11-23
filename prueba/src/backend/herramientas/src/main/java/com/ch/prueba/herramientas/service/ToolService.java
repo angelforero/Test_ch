@@ -1,9 +1,6 @@
 package com.ch.prueba.herramientas.service;
 
 import com.ch.prueba.herramientas.domain.Categoria;
-import com.ch.prueba.herramientas.exceptions.reglas.DuracionExcesivaException;
-import com.ch.prueba.herramientas.exceptions.reglas.FechaEnPasadoException;
-import com.ch.prueba.herramientas.exceptions.reglas.RangoFechasInvalidoException;
 import com.ch.prueba.herramientas.repository.HerramientaRepository;
 import com.ch.prueba.herramientas.web.dto.HerramientaDto;
 import com.ch.prueba.herramientas.web.dto.mapper.HerramientaMapper;
@@ -13,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -79,24 +75,8 @@ public class ToolService {
     public List<HerramientaDto> listarDisponibles(LocalDate fechaInicio,
                                                   LocalDate fechaFin,
                                                   Categoria categoria) {
-        validarRango(fechaInicio, fechaFin);
+        ValidadorRango.validar(fechaInicio, fechaFin, LocalDate.now(clock), MAX_DURACION_DIAS);
         return HerramientaMapper.toDtoList(
                 herramientaRepository.findDisponibles(categoria, fechaInicio, fechaFin));
-    }
-
-    // ---- Validaciones de regla (R02) ------------------------------------
-
-    private void validarRango(LocalDate fechaInicio, LocalDate fechaFin) {
-        if (fechaFin.isBefore(fechaInicio)) {
-            throw new RangoFechasInvalidoException(fechaInicio, fechaFin);
-        }
-        LocalDate hoy = LocalDate.now(clock);
-        if (fechaInicio.isBefore(hoy)) {
-            throw new FechaEnPasadoException(fechaInicio, hoy);
-        }
-        int duracionDias = (int) ChronoUnit.DAYS.between(fechaInicio, fechaFin) + 1;
-        if (duracionDias > MAX_DURACION_DIAS) {
-            throw new DuracionExcesivaException(duracionDias, MAX_DURACION_DIAS);
-        }
     }
 }

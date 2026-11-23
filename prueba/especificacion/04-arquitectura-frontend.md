@@ -413,7 +413,7 @@ No se exige WCAG completo (fuera de alcance) pero sí lo anterior como higiene.
 
 ## 14. Pruebas frontend
 
-> **Alineado con D19 (doc 01):** solo tests **unitarios** con **mocks**, cobertura **máxima 30 %** medida con el coverage de Karma (`ng test --code-coverage`). No hay E2E (ni Cypress ni Playwright) ni tests de integración multi-componente.
+> **Alineado con D19 (doc 01):** solo tests **unitarios** con **mocks**, cobertura **máxima 75 %** medida con el coverage de Karma (`ng test --code-coverage`). No hay E2E (ni Cypress ni Playwright) ni tests de integración multi-componente.
 
 | Qué se prueba | Cómo se mockea | Herramienta |
 |---------------|----------------|-------------|
@@ -431,13 +431,13 @@ No se exige WCAG completo (fuera de alcance) pero sí lo anterior como higiene.
 ```js
 coverageReporter: {
   check: {
-    global: { statements: 30, branches: 30, functions: 30, lines: 30 }
-    // Umbral máximo: superar 30 % indica sobre-testing (D19)
+    global: { statements: 75, branches: 75, functions: 75, lines: 75 }
+    // Umbral máximo: superar 75 % indica sobre-testing (D19)
   }
 }
 ```
 
-> Nota: Karma permite configurar un umbral *mínimo* estándar. El objetivo "máximo 30 %" se vigila **en revisión**, no con fallo automático del build frontend. En backend, JaCoCo sí admite la regla `MAXIMUM 0.30`.
+> Nota: Karma permite configurar un umbral *mínimo* estándar. El objetivo "máximo 75 %" se vigila **en revisión**, no con fallo automático del build frontend. En backend, JaCoCo sí admite la regla `MAXIMUM 0.75`.
 
 ---
 

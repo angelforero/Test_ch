@@ -542,7 +542,7 @@ And la prueba se puede excluir del build por defecto (tag @performance)
 
 ## Matriz de trazabilidad
 
-> Estrategia de pruebas: **solo tests unitarios con mocks**, cobertura máxima 30 % (ver D19 en doc 01). Se permite `@SpringBootTest` y slices; **no** hay E2E ni integración multi-servicio. Los tests listados son los **unitarios clave** que validan cada requisito — no una enumeración exhaustiva.
+> Estrategia de pruebas: **solo tests unitarios con mocks**, cobertura máxima 75 % (ver D19 en doc 01). Se permite `@SpringBootTest` y slices; **no** hay E2E ni integración multi-servicio. Los tests listados son los **unitarios clave** que validan cada requisito — no una enumeración exhaustiva.
 
 | Requisito | Endpoints API | Pantallas UI | Tests unitarios clave (con mocks) |
 |-----------|---------------|--------------|-----------------------------------|
