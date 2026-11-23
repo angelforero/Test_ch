@@ -134,10 +134,18 @@
 									</limits>
 								</rule>
 							</rules>
-							<!-- Clases excluidas de la medición (no aportan valor cubrirlas) -->
+							<!--
+								Clases excluidas del CHECK de cobertura (ver reporte
+								completo en target/site/jacoco/ para métricas reales).
+								Motivo: estas clases o no contienen lógica de negocio
+								(POJOs, enums, DTOs) o se tocan simplemente al arrancar
+								el contexto (seeder, main), inflándose artificialmente.
+								Lo relevante para el 30 % son services + web/advice.
+							-->
 							<excludes>
 								<exclude>com/ch/prueba/herramientas/HerramientasApplication.class</exclude>
 								<exclude>com/ch/prueba/herramientas/config/**</exclude>
+								<exclude>com/ch/prueba/herramientas/domain/**</exclude>
 								<exclude>com/ch/prueba/herramientas/web/dto/**</exclude>
 							</excludes>
 						</configuration>
