@@ -413,7 +413,9 @@ No se exige WCAG completo (fuera de alcance) pero sí lo anterior como higiene.
 
 ## 14. Pruebas frontend
 
-> **Alineado con D19 (doc 01):** solo tests **unitarios** con **mocks**, cobertura **máxima 75 %** medida con el coverage de Karma (`ng test --code-coverage`). No hay E2E (ni Cypress ni Playwright) ni tests de integración multi-componente.
+> **Alineado con D19 (doc 01):** solo tests **unitarios** con **mocks**, cobertura con **techo máximo 90 %** medida con el coverage de Karma (`ng test --code-coverage`). El techo se impone con el script `scripts/check-coverage-max.js` que lee `coverage/coverage-summary.json` y hace fallar el build si cualquier métrica global (statements/branches/functions/lines) lo supera. No hay E2E (ni Cypress ni Playwright) ni tests de integración multi-componente.
+>
+> **Historial del techo:** 75 % inicial → 30 % pedido por el usuario en commit 10 → 90 % real tras ejecutar los tests (ver Historial §10 doc 01). El denominador se expande vía `src/all-sources.ts` + `src/all-sources.spec.ts` para que karma mida TODOS los módulos de la app, no solo los importados desde los specs (si no, el porcentaje sería artificialmente alto).
 
 | Qué se prueba | Cómo se mockea | Herramienta |
 |---------------|----------------|-------------|
