@@ -22,6 +22,13 @@ import { AppError } from '../../../core/errors/app-error';
       <div class="banner" role="alert">
         <strong class="title">{{ error.title }}</strong>
         <p class="detail">{{ error.detail }}</p>
+        @if (fieldErrors.length > 0) {
+          <ul class="fields">
+            @for (fieldError of fieldErrors; track fieldError.campo) {
+              <li><strong>{{ fieldError.campo }}:</strong> {{ fieldError.mensaje }}</li>
+            }
+          </ul>
+        }
       </div>
     }
   `,
@@ -36,8 +43,13 @@ import { AppError } from '../../../core/errors/app-error';
     }
     .title { display: block; margin-bottom: 4px; font-size: 0.95rem; }
     .detail { margin: 0; font-size: 0.875rem; color: #7f1d1d; }
+    .fields { margin: 8px 0 0; padding-left: 20px; font-size: 0.82rem; }
   `],
 })
 export class ErrorBannerComponent {
   @Input() error: AppError | null = null;
+
+  get fieldErrors() {
+    return this.error?.fieldErrors ?? [];
+  }
 }

@@ -1,13 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Output, inject } from '@angular/core';
-import {
-  AbstractControl,
-  FormBuilder,
-  ReactiveFormsModule,
-  ValidationErrors,
-  Validators,
-} from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 
+import {
+  maxDurationValidator,
+  noPastValidator,
+  orderedRangeValidator,
+} from '../../../../core/validators/date-range.validators';
 import { CATEGORIAS, CATEGORIA_LABEL, Categoria } from '../../models/categoria';
 
 /** Payload emitido por el formulario cuando el usuario pulsa "Consultar". */
@@ -112,31 +111,4 @@ export class AvailabilityFormComponent {
       categoria:   v.categoria,
     });
   }
-}
-
-// --- Validators (exportados para test unitario directo) ---------------------
-
-/** {@code fechaInicio \u2264 fechaFin}. */
-export function orderedRangeValidator(ctrl: AbstractControl): ValidationErrors | null {
-  const i = ctrl.get('fechaInicio')?.value as string;
-  const f = ctrl.get('fechaFin')?.value as string;
-  if (!i || !f) return null;
-  return i <= f ? null : { range: true };
-}
-
-/** {@code fechaInicio \u2265 hoy}. */
-export function noPastValidator(ctrl: AbstractControl): ValidationErrors | null {
-  const i = ctrl.get('fechaInicio')?.value as string;
-  if (!i) return null;
-  const today = new Date().toISOString().slice(0, 10);
-  return i >= today ? null : { past: true };
-}
-
-/** Duraci\u00f3n m\u00e1xima 7 d\u00edas (D11 del backend). */
-export function maxDurationValidator(ctrl: AbstractControl): ValidationErrors | null {
-  const i = ctrl.get('fechaInicio')?.value as string;
-  const f = ctrl.get('fechaFin')?.value as string;
-  if (!i || !f) return null;
-  const diffDays = (Date.parse(f) - Date.parse(i)) / 86_400_000;
-  return diffDays >= 0 && diffDays <= 7 ? null : { tooLong: true };
 }

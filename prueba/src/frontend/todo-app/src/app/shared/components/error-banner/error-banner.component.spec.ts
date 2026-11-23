@@ -35,6 +35,21 @@ describe('ErrorBannerComponent', () => {
     expect(text).toContain('Ya hay una reserva activa');
   });
 
+  it('renderiza los errores de campo del 422', () => {
+    comp.error = new AppError(
+      ProblemType.ValidationError,
+      'Datos inválidos',
+      'Revisa los campos.',
+      422,
+      { errors: [{ campo: 'correo', mensaje: 'debe ser una dirección de correo válida' }] },
+    );
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('correo');
+    expect(text).toContain('dirección de correo válida');
+  });
+
   it('no renderiza el banner cuando error es null', () => {
     comp.error = null;
     fixture.detectChanges();

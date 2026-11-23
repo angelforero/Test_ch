@@ -1,9 +1,8 @@
 // Karma configuration personalizada (ver doc 04 \u00a714 y D19).
 //
 // Genera reporte de cobertura cada vez que se corre `ng test`. El
-// TECHO m\u00e1ximo del 30% no se impone aqu\u00ed (karma-coverage solo valida
-// m\u00ednimos) sino en el script `scripts/check-coverage-max.js`, invocado
-// por `npm test` tras ng test (ver package.json).
+// mínimo global del 30% se verifica con `scripts/check-coverage-min.js`,
+// invocado por `npm test` tras ng test (ver package.json). No hay techo.
 //
 // Angular 19 usa @angular-devkit/build-angular:karma como builder. Este
 // archivo se pasa v\u00eda angular.json.architect.test.options.karmaConfig.

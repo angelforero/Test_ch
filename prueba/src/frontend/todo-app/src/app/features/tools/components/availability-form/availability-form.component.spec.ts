@@ -1,14 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { FormBuilder } from '@angular/forms';
+
+import {
+  maxDurationValidator,
+  noPastValidator,
+  orderedRangeValidator,
+} from '../../../../core/validators/date-range.validators';
 import { Categoria } from '../../models/categoria';
 import {
   AvailabilityFormComponent,
   AvailabilityQuery,
-  maxDurationValidator,
-  noPastValidator,
-  orderedRangeValidator,
 } from './availability-form.component';
-import { FormBuilder } from '@angular/forms';
 
 /**
  * Tests de {@link AvailabilityFormComponent}. Dos niveles:
