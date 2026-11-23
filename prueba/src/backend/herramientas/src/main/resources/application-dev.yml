@@ -1,0 +1,16 @@
+# ---------------------------------------------------------------------------
+# Perfil 'dev' — activar con: --spring.profiles.active=dev
+# Pensado para desarrollo local junto al frontend Angular en :4200.
+# El frontend usa proxy.conf.json, así que CORS no es imprescindible, pero
+# lo dejamos permisivo para facilitar llamadas directas desde herramientas
+# como Postman, cURL o REST Client.
+# ---------------------------------------------------------------------------
+spring:
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.ch.prueba.herramientas: TRACE
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE

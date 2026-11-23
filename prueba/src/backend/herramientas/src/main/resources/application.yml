@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Configuración base de la API de reserva de herramientas
+# Decisiones encapsuladas aquí vienen del doc 01 (D4, D5, R08):
+#   - H2 en memoria, modo MemoryDB (vive mientras la JVM)
+#   - Consola H2 habilitada para inspección manual en dev
+#   - Stack traces NUNCA expuestos al cliente (coherente con R08)
+# ---------------------------------------------------------------------------
+spring:
+  application:
+    name: herramientas
+
+  datasource:
+    url: jdbc:h2:mem:biblioteca;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate.format_sql: true
+    show-sql: false   # true solo en perfil dev
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  error:
+    include-stacktrace: never
+    include-message: always
+    include-binding-errors: never
+
+logging:
+  level:
+    root: INFO
+    com.ch.prueba.herramientas: DEBUG
+    org.hibernate.SQL: WARN
+
+# ---------------------------------------------------------------------------
+# springdoc-openapi (D8): expone /v3/api-docs y /swagger-ui.html
+# ---------------------------------------------------------------------------
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
