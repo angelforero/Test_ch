@@ -45,12 +45,12 @@ Una **reserva** ocupa una herramienta durante un rango de fechas (inicio y fin, 
 | # | Área | Decisión | Justificación |
 |---|------|----------|---------------|
 | D1 | Lenguaje backend | **Java 17** (LTS) | Requisito del enunciado; LTS estable y ampliamente soportada. |
-| D2 | Framework backend | **Spring Boot 3.3.x** | Última rama estable compatible con Java 17 (Spring Boot 3.4+ ya mira a Java 21). Ecosistema maduro para REST + JPA + Validation + Testing. |
+| D2 | Framework backend | **Spring Boot 4.2.0** | Versión servida por Spring Initializr al momento del scaffold (la rama 3.x ya no se ofrece desde el endpoint). Soporta Java 17 como mínimo, coherente con D1. Decisión revisada el 2026-11-23 respecto al plan inicial (3.3.x); detalle en §10 "Historial de decisiones". Ecosistema maduro para REST + JPA + Validation + Testing. |
 | D3 | Build backend | **Maven** | Estándar de facto, integración directa con Spring Initializr y con IDEs. |
 | D4 | Persistencia | **H2 en memoria** (modo `MemoryDB`) | Cero fricción de instalación; suficiente para la prueba y para cargar 200 herramientas + 5.000 reservas del requisito R09. |
 | D5 | ORM | **Spring Data JPA + Hibernate** | Estándar con Spring Boot; permite consultas derivadas y JPQL para el chequeo de solapamientos. |
 | D6 | Validación | **Jakarta Bean Validation** (`@Valid`, `@NotBlank`, `@Email`, `@Future`, etc.) + `@ControllerAdvice` para formato uniforme | Integración nativa con Spring MVC. |
-| D7 | Formato de errores | **RFC 7807 — Problem Details for HTTP APIs** (`application/problem+json`), gestionado **exclusivamente de forma centralizada** mediante un único `@RestControllerAdvice` global (`GlobalExceptionHandler`) que mapea **excepciones personalizadas de dominio** a respuestas HTTP. | Estándar, soportado nativamente por Spring Boot 3 vía `ProblemDetail`. La centralización elimina `try/catch` + `ResponseEntity` de los controladores y garantiza coherencia. Ver detalle en D7-bis y en el doc 03 §6-bis. |
+| D7 | Formato de errores | **RFC 7807 — Problem Details for HTTP APIs** (`application/problem+json`), gestionado **exclusivamente de forma centralizada** mediante un único `@RestControllerAdvice` global (`GlobalExceptionHandler`) que mapea **excepciones personalizadas de dominio** a respuestas HTTP. | Estándar, soportado nativamente desde Spring Boot 3 (incluye 4.x) vía la clase `ProblemDetail`. La centralización elimina `try/catch` + `ResponseEntity` de los controladores y garantiza coherencia. Ver detalle en D7-bis y en el doc 03 §6-bis. |
 | D7-bis | Excepciones personalizadas | Jerarquía propia bajo un paquete `exceptions/`, lanzada por los **servicios** (no por los controladores). El `GlobalExceptionHandler` tiene un `@ExceptionHandler` por cada una. Los controladores **nunca** hacen `try/catch` para traducir errores a HTTP. | Los servicios expresan intención de negocio ("no se puede cancelar") en vez de acoplarse a HTTP. El mapeo a código y `ProblemDetail` ocurre en un único punto. |
 | D8 | Documentación API | **springdoc-openapi** (Swagger UI en `/swagger-ui.html`) | OpenAPI 3 autogenerado; útil para que el frontend consuma el contrato. |
 | D9 | Framework frontend | **Angular 19** (ya scaffoldeado) | Requisito del enunciado; standalone components, control flow nuevo (`@if`, `@for`). |
@@ -163,3 +163,13 @@ La solución se considera completa cuando:
 | Sin autenticación → cualquiera puede ver/cancelar reservas de un correo que conozca. | Documentado como fuera de alcance; en producción se exigiría login. |
 | Sin paginación en `GET /tools` (10–200 elementos esperados). | Suficiente para el MVP; se añadiría si el catálogo creciera. |
 | Sin rate limiting. | Fuera de alcance. |
+
+---
+
+## 10. Historial de decisiones
+
+Registro de cambios materiales sobre las decisiones técnicas (D1–D19) posteriores a la v1 de la especificación. Pensado para dejar rastro defensible en la entrevista.
+
+| Fecha | Decisión | Cambio | Motivo |
+|-------|----------|--------|--------|
+| 2026-11-23 | **D2** | Spring Boot `3.3.x` → `4.2.0` | Spring Initializr dejó de servir la rama 3.x desde su endpoint público (responde 400 Bad Request ante `bootVersion=3.3.5`). Spring Boot 4.2.0 también soporta Java 17 como mínimo, así que la coherencia con D1 se mantiene. La alternativa (escribir `pom.xml` a mano con 3.3.x) se descartó por aumentar el riesgo de errores típicos del wrapper de Maven en una prueba de 4 h. Cambio visible en los *starters*: `spring-boot-starter-web` → `starter-webmvc`, `spring-boot-starter-test` → starters separados por módulo (`starter-webmvc-test`, `starter-data-jpa-test`, `starter-validation-test`). |

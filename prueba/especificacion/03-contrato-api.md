@@ -83,7 +83,7 @@ Todas las respuestas 4xx y 5xx usan `application/problem+json` con esta estructu
 
 ```json
 {
-  "type":     "https://biblioteca.local/problems/<slug>",
+  "type":     "http://localhost:8080/problems/<slug>",
   "title":    "Texto breve legible",
   "status":   422,
   "detail":   "Mensaje explicativo para el usuario final",
@@ -103,15 +103,17 @@ Todas las respuestas 4xx y 5xx usan `application/problem+json` con esta estructu
 
 ### 3.1 Catálogo cerrado de `type`
 
-| `type` slug | Código | Cuándo se devuelve |
-|-------------|--------|--------------------|
-| `malformed-request` | 400 | Body JSON inválido, query param mal formado |
-| `validation-error` | 422 | Fallos de Bean Validation o reglas de formato |
-| `not-found` | 404 | Recurso inexistente (herramienta, reserva) |
-| `overlap-conflict` | 409 | Solapamiento de reservas (R03) |
-| `active-reservation-limit` | 409 | Límite de 3 reservas activas (R04) |
-| `cancellation-not-allowed` | 409 | Intento de cancelar reserva ya iniciada o cancelada (R05) |
-| `internal-error` | 500 | Error inesperado del servidor |
+Todos los `type` son URLs completas con la base `http://localhost:8080/problems/`. En producción el host cambiaría al dominio real; en desarrollo local esta base coincide con el puerto por defecto del backend (D16). La URL **no tiene por qué resolver a documentación navegable** — el estándar RFC 7807 solo exige que sea un identificador único y estable del tipo de problema.
+
+| `type` (URL completa) | Código | Cuándo se devuelve |
+|-----------------------|--------|--------------------|
+| `http://localhost:8080/problems/malformed-request` | 400 | Body JSON inválido, query param mal formado |
+| `http://localhost:8080/problems/validation-error` | 422 | Fallos de Bean Validation o reglas de formato |
+| `http://localhost:8080/problems/not-found` | 404 | Recurso inexistente (herramienta, reserva) |
+| `http://localhost:8080/problems/overlap-conflict` | 409 | Solapamiento de reservas (R03) |
+| `http://localhost:8080/problems/active-reservation-limit` | 409 | Límite de 3 reservas activas (R04) |
+| `http://localhost:8080/problems/cancellation-not-allowed` | 409 | Intento de cancelar reserva ya iniciada o cancelada (R05) |
+| `http://localhost:8080/problems/internal-error` | 500 | Error inesperado del servidor |
 
 ---
 
@@ -200,7 +202,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 **Ejemplo — respuesta 422**
 ```json
 {
-  "type": "https://biblioteca.local/problems/validation-error",
+  "type": "http://localhost:8080/problems/validation-error",
   "title": "Error de validación",
   "status": 422,
   "detail": "fechaFin debe ser mayor o igual a fechaInicio",
@@ -273,7 +275,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 **Ejemplo — respuesta 409 (solapamiento)**
 ```json
 {
-  "type": "https://biblioteca.local/problems/overlap-conflict",
+  "type": "http://localhost:8080/problems/overlap-conflict",
   "title": "Herramienta no disponible",
   "status": 409,
   "detail": "La herramienta ya tiene una reserva que se solapa con el rango 2026-12-01 a 2026-12-05.",
@@ -284,7 +286,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 **Ejemplo — respuesta 409 (límite de activas)**
 ```json
 {
-  "type": "https://biblioteca.local/problems/active-reservation-limit",
+  "type": "http://localhost:8080/problems/active-reservation-limit",
   "title": "Límite de reservas activas alcanzado",
   "status": 409,
   "detail": "El correo ada@example.com ya tiene 3 reservas activas (máximo permitido).",
@@ -367,7 +369,7 @@ GET /api/reservations?correo=ada@example.com HTTP/1.1
 **Ejemplo — respuesta 409**
 ```json
 {
-  "type": "https://biblioteca.local/problems/cancellation-not-allowed",
+  "type": "http://localhost:8080/problems/cancellation-not-allowed",
   "title": "Cancelación no permitida",
   "status": 409,
   "detail": "La reserva 42 no se puede cancelar: ya ha comenzado o ha finalizado.",
@@ -462,16 +464,16 @@ WHERE (:categoria IS NULL OR h.categoria = :categoria)
 
 Lanzadas por los **servicios** (`ToolService`, `ReservationService`). Nunca por controladores.
 
-| Excepción (package `com.biblioteca.exceptions`) | Lanzada cuando | HTTP | `type` del `ProblemDetail` |
-|-------------------------------------------------|----------------|------|----------------------------|
+| Excepción (package `com.ch.prueba.herramientas.exceptions`) | Lanzada cuando | HTTP | `type` del `ProblemDetail` (slug tras `/problems/`) |
+|-------------------------------------------------------------|----------------|------|------------------------------------------------------|
 | `HerramientaNoEncontradaException` | El `herramientaId` no existe | 404 | `not-found` |
 | `ReservaNoEncontradaException` | La `reservaId` no existe | 404 | `not-found` |
 | `SolapamientoReservaException` | Nueva reserva solapa con otra activa (R03) | 409 | `overlap-conflict` |
 | `LimiteReservasActivasException` | El correo ya tiene ≥ 3 activas (R04) | 409 | `active-reservation-limit` |
 | `CancelacionNoPermitidaException` | Intento de cancelar reserva iniciada/finalizada/cancelada (R05) | 409 | `cancellation-not-allowed` |
-| `ReglaValidacionException` (base, puede subclasificarse: `FechaEnPasadoException`, `DuracionExcesivaException`, `RangoFechasInvalidoException`) | Reglas de negocio sobre fechas (R02) | 422 | `validation-error` |
+| `ReglaValidacionException` (base, subpaquete `com.ch.prueba.herramientas.exceptions.reglas` con subclases `FechaEnPasadoException`, `DuracionExcesivaException`, `RangoFechasInvalidoException`) | Reglas de negocio sobre fechas (R02) | 422 | `validation-error` |
 
-Todas heredan de una raíz común `DomainException` para que el handler pueda agruparlas si conviene. Cada excepción lleva en su constructor los datos necesarios para componer `detail` (ej. `new SolapamientoReservaException(herramientaId, fechaInicio, fechaFin)`), **sin** incluir texto ya formateado en inglés/español — el mensaje legible lo compone el handler.
+Todas heredan de una raíz común `DomainException` (en el mismo paquete) para que el handler pueda agruparlas si conviene. Cada excepción lleva en su constructor los datos necesarios para componer `detail` (ej. `new SolapamientoReservaException(herramientaId, fechaInicio, fechaFin)`), **sin** incluir texto ya formateado en inglés/español — el mensaje legible lo compone el handler.
 
 ### 6-bis.2 Excepciones Spring mapeadas por el handler
 
@@ -510,7 +512,7 @@ public class GlobalExceptionHandler {
 }
 ```
 
-Cada handler devuelve directamente un `ProblemDetail` (soporte nativo de Spring Boot 3) con el status, `type`, `title`, `detail` y, cuando aplique, `errors[]`.
+Cada handler devuelve directamente un `ProblemDetail` (soporte nativo desde Spring Boot 3, incluye 4.x) con el status, `type`, `title`, `detail` y, cuando aplique, `errors[]`.
 
 > **Testing (D19):** `GlobalExceptionHandlerTest` contiene un `@Test` por cada fila de las tablas 6-bis.1 y 6-bis.2, instanciando el handler directamente (test unitario puro, sin cargar contexto Spring) o con `@WebMvcTest` + `MockMvc` si se quiere verificar también el content-type `application/problem+json`.
 
