@@ -1,0 +1,125 @@
+# ============================================================================
+# .gitignore — biblioteca de herramientas (Spring Boot + Angular)
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Java / Maven (backend)
+# ---------------------------------------------------------------------------
+target/
+build/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper logs
+.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot DevTools
+.spring-boot-devtools.properties
+
+# H2 database files (si por configuración se persistiera en disco)
+*.db
+*.mv.db
+*.trace.db
+*.lock.db
+
+# JaCoCo
+jacoco.exec
+*.exec
+
+# ---------------------------------------------------------------------------
+# Node / Angular (frontend)
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+.angular/
+.nx/
+coverage/
+*.tsbuildinfo
+
+# Angular CLI logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---------------------------------------------------------------------------
+# IDEs y editores
+# ---------------------------------------------------------------------------
+# IntelliJ / JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.metadata/
+bin/
+tmp/
+
+# NetBeans
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# VS Code — ignorar todo menos la config compartida del equipo
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+
+# ---------------------------------------------------------------------------
+# Sistema operativo
+# ---------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ---------------------------------------------------------------------------
+# Logs y temporales
+# ---------------------------------------------------------------------------
+*.log
+logs/
+*.tmp
+*.temp
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------------
+# Secretos y credenciales (defensivo — no deben existir en este repo)
+# ---------------------------------------------------------------------------
+*.pem
+*.key
+*.p12
+*.pfx
+application-secret.yml
+application-secret.properties
