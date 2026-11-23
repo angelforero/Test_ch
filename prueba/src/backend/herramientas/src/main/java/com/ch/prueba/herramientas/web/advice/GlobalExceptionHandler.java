@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -180,6 +181,24 @@ public class GlobalExceptionHandler {
         problem.setTitle("Petición malformada");
         problem.setProperty("parametro", ex.getName());
         problem.setProperty("valorRechazado", String.valueOf(ex.getValue()));
+        return problem;
+    }
+
+    /**
+     * Parámetro de query/path obligatorio ausente en la petición (p. ej.
+     * {@code GET /api/tools/available} sin {@code fechaInicio}). Spring
+     * lanza esta excepción antes incluso de invocar el método del
+     * controlador.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ProblemDetail handleMissingParam(MissingServletRequestParameterException ex) {
+        log.warn("Parámetro obligatorio ausente: {} (tipo {})", ex.getParameterName(), ex.getParameterType());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Falta el parámetro obligatorio '" + ex.getParameterName() + "'.");
+        problem.setType(problemType("malformed-request"));
+        problem.setTitle("Petición malformada");
+        problem.setProperty("parametro", ex.getParameterName());
         return problem;
     }
 
