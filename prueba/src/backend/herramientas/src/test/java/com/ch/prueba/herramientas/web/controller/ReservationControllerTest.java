@@ -9,8 +9,7 @@ import com.ch.prueba.herramientas.web.advice.GlobalExceptionHandler;
 import com.ch.prueba.herramientas.web.dto.ReservaCreacionDto;
 import com.ch.prueba.herramientas.web.dto.ReservaDto;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,8 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -46,12 +45,13 @@ class ReservationControllerTest {
     @Autowired private MockMvc mockMvc;
 
     /**
-     * {@link ObjectMapper} construido manualmente con soporte JSR-310
-     * (LocalDate) — en Spring Boot 4.x el slice {@code @WebMvcTest} ya
-     * no inyecta el ObjectMapper global por defecto, hay que crearlo aquí.
+     * {@link JsonMapper} de Jackson 3 (el que usa Spring Boot 4) construido
+     * manualmente: el slice {@code @WebMvcTest} no inyecta el mapper global.
+     * Jackson 3 soporta {@code java.time} de serie y escribe {@code LocalDate}
+     * en ISO, así que no hace falta registrar {@code JavaTimeModule} (que
+     * era de Jackson 2 y solo llegaba de forma transitiva vía springdoc 2.x).
      */
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule());
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @MockitoBean
     private ReservationService reservationService;
