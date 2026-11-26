@@ -1,8 +1,10 @@
 # 03 — Contrato API REST
 
-> **Versión:** 1.0 · **Fecha:** 2026-11-22
+> **Versión:** 1.1 · **Fecha:** 2026-11-25 (v1.0: 2026-11-22)
 > Contrato cerrado entre el frontend Angular y el backend Spring Boot. Este documento es la **fuente de verdad** para generar modelos TypeScript en el frontend y para implementar controladores en el backend.
 > Cualquier cambio aquí requiere actualizar los documentos 02 y 04.
+>
+> **v1.1 — alineación con la implementación.** Tras implementar y verificar end-to-end (smoke tests contra el backend real), este documento se actualizó para reflejar el contrato **efectivamente implementado**. Las diferencias respecto a la v1.0 y su motivo están en el doc 01 §10 (entradas del 2026-11-25). La v1.0 original sigue disponible en el historial Git (commit `97a2469`).
 
 ---
 
@@ -22,7 +24,8 @@
 | Versionado | No versionado en MVP (si se añadiera, sería `/api/v1`) |
 | Paginación | No aplica en MVP |
 | Autenticación | Ninguna |
-| CORS | Permitido desde `http://localhost:4200` (perfil `dev`) |
+| CORS | No se configura en el backend: en desarrollo el frontend usa `proxy.conf.json` (`/api` → `:8080`), ver §9 |
+| Correo | Se normaliza a `trim()` + minúsculas en toda entrada (body y query) |
 
 ---
 
@@ -64,16 +67,18 @@ Reglas de derivación (ver documento 01, §5):
 {
   "id": 42,
   "herramientaId": 1,
-  "herramientaNombre": "Taladro percutor Bosch GSB 13 RE",
+  "nombreHerramienta": "Taladro percutor Bosch GSB 13 RE",
   "nombre": "Ada Lovelace",
   "correo": "ada@example.com",
   "fechaInicio": "2026-12-01",
   "fechaFin": "2026-12-05",
-  "estado": "CONFIRMADA"
+  "estado": "CONFIRMADA",
+  "cancelada": false
 }
 ```
 
-> `herramientaNombre` se incluye en la respuesta por conveniencia del frontend (evita un GET adicional por cada reserva). En el request de creación solo se envía `herramientaId`.
+> `nombreHerramienta` se incluye en la respuesta por conveniencia del frontend (evita un GET adicional por cada reserva). En el request de creación solo se envía `herramientaId`.
+> `cancelada` refleja el único flag persistido; `estado` es el valor derivado (§2.2). El frontend usa `estado` para decidir qué mostrar.
 
 ---
 
@@ -83,14 +88,13 @@ Todas las respuestas 4xx y 5xx usan `application/problem+json` con esta estructu
 
 ```json
 {
-  "type":     "http://localhost:8080/problems/<slug>",
-  "title":    "Texto breve legible",
-  "status":   422,
-  "detail":   "Mensaje explicativo para el usuario final",
-  "instance": "/api/reservations",
+  "type":   "http://localhost:8080/problems/validation-error",
+  "title":  "Error de validación",
+  "status": 422,
+  "detail": "Hay 2 error(es) de validación en los campos enviados.",
   "errors": [
-    { "field": "fechaInicio", "message": "no puede ser anterior a hoy" },
-    { "field": "correo",      "message": "formato de email inválido" }
+    { "campo": "nombre", "mensaje": "no debe estar vacío", "valorRechazado": "" },
+    { "campo": "correo", "mensaje": "debe ser una dirección de correo electrónico con formato correcto", "valorRechazado": "no-email" }
   ]
 }
 ```
@@ -98,8 +102,9 @@ Todas las respuestas 4xx y 5xx usan `application/problem+json` con esta estructu
 - `type`: identificador estable del tipo de problema (ver §3.1).
 - `title`: título corto en español, consistente por `type`.
 - `detail`: mensaje en español apto para mostrar al usuario.
-- `instance`: la ruta de la petición que falló.
-- `errors`: **opcional**, solo para errores de validación de campos (código 422 o 400 en body malformado).
+- `errors`: **opcional**, solo en errores de Bean Validation (`MethodArgumentNotValidException`, `ConstraintViolationException`). Cada entrada es `{ campo, mensaje, valorRechazado? }` (claves en español, coherentes con el resto del dominio; `valorRechazado` se omite si es `null`). Las reglas de negocio de fechas (`ReglaValidacionException`) devuelven 422 **sin** `errors[]`: el motivo va en `detail`.
+- **Propiedades extra** por tipo (RFC 7807 §3.2 permite extensiones), útiles para el cliente: `herramientaId`/`fechaInicio`/`fechaFin` en `overlap-conflict`; `correo`/`activasActuales`/`maximo` en `active-reservation-limit`; `reservaId`/`motivo` (`YA_INICIADA` · `YA_FINALIZADA` · `YA_CANCELADA`) en `cancellation-not-allowed`; `herramientaId` o `reservaId` en `not-found`; `parametro` (y `valorRechazado`) en `malformed-request`.
+- `instance`: **no se incluye** en la implementación actual (el handler no lo establece y Jackson omite nulos). Es opcional en RFC 7807; queda como mejora menor.
 
 ### 3.1 Catálogo cerrado de `type`
 
@@ -136,7 +141,7 @@ Lista todas las herramientas del catálogo, opcionalmente filtradas por categor�
 | Código | Cuerpo | Caso |
 |--------|--------|------|
 | 200 | `Herramienta[]` | OK |
-| 400 | `ProblemDetail` (`malformed-request` o `validation-error`) | `categoria` no es un valor válido del enum |
+| 400 | `ProblemDetail` (`malformed-request`, con `parametro` y `valorRechazado`) | `categoria` no es un valor válido del enum |
 
 **Ejemplo — petición**
 ```http
@@ -170,7 +175,7 @@ Devuelve las herramientas disponibles (sin solapamientos con reservas activas) p
 
 **Reglas**
 
-- `fechaInicio` **no se exige** `≥ hoy` aquí (una búsqueda puede consultar el pasado si el usuario quisiera, aunque no tenga utilidad). La validación de "no reservar en el pasado" se aplica en `POST /api/reservations`.
+- El rango se valida con **las mismas reglas que una reserva** (`ValidadorRango`, compartido con `POST /api/reservations`): `fechaFin ≥ fechaInicio`, `fechaInicio ≥ hoy` y duración `≤ 7` días. Cualquier incumplimiento → `422 validation-error`. *(v1.0 decía que aquí no se exigía `fechaInicio ≥ hoy`; se unificó para que la consulta de disponibilidad solo ofrezca rangos que después se puedan reservar — ver doc 01 §10.)*
 - Se considera una herramienta **disponible** si **no tiene ninguna reserva activa** (`CONFIRMADA` o `EN_CURSO`) cuyo rango se solape con el rango consultado.
 
 **Fórmula de solapamiento** (dos rangos `[a1, a2]` y `[b1, b2]` se solapan sii):
@@ -184,8 +189,8 @@ a1 <= b2  AND  b1 <= a2
 | Código | Cuerpo | Caso |
 |--------|--------|------|
 | 200 | `Herramienta[]` | OK (puede ser `[]`) |
-| 400 | `ProblemDetail` (`malformed-request`) | Falta `fechaInicio` o `fechaFin`, formato inválido |
-| 422 | `ProblemDetail` (`validation-error`) | `fechaFin < fechaInicio` |
+| 400 | `ProblemDetail` (`malformed-request`) | Falta `fechaInicio` o `fechaFin`, formato de fecha o `categoria` inválidos |
+| 422 | `ProblemDetail` (`validation-error`) | `fechaFin < fechaInicio`, `fechaInicio < hoy` o duración > 7 días |
 
 **Ejemplo — petición**
 ```http
@@ -205,11 +210,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
   "type": "http://localhost:8080/problems/validation-error",
   "title": "Error de validación",
   "status": 422,
-  "detail": "fechaFin debe ser mayor o igual a fechaInicio",
-  "instance": "/api/tools/available",
-  "errors": [
-    { "field": "fechaFin", "message": "debe ser mayor o igual a fechaInicio" }
-  ]
+  "detail": "Rango inválido: fechaFin 2026-12-10 es anterior a fechaInicio 2026-12-12"
 }
 ```
 
@@ -235,25 +236,29 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 
 | Campo | Regla |
 |-------|-------|
-| `herramientaId` | obligatorio, entero > 0 |
-| `nombre` | obligatorio, `@NotBlank`, longitud 1–120 |
-| `correo` | obligatorio, `@Email`, longitud ≤ 254, se normaliza a `trim().toLowerCase()` |
+| `herramientaId` | obligatorio (`@NotNull`) |
+| `nombre` | obligatorio, `@NotBlank`, longitud ≤ 120 |
+| `correo` | obligatorio, `@Email`, longitud ≤ 254. Se normaliza a `trim().toLowerCase()` **al deserializar, antes de Bean Validation** (así `"  Ada@Example.COM  "` es válido) |
 | `fechaInicio` | obligatoria, no anterior a hoy |
 | `fechaFin` | obligatoria, `≥ fechaInicio`, `≤ fechaInicio + 6 días` (duración máx. 7 días inclusivo) |
 
-**Reglas de negocio** (validadas tras Bean Validation, dentro de transacción)
+**Reglas de negocio** (validadas tras Bean Validation, dentro de una transacción `@Transactional`), **en este orden**:
 
-1. La `herramientaId` debe existir → si no, `404 not-found`.
-2. No debe solapar con reservas activas de esa herramienta → si solapa, `409 overlap-conflict`.
+1. Reglas de fechas (`ValidadorRango`): orden, no pasado, duración ≤ 7 → `422 validation-error`.
+2. La `herramientaId` debe existir → si no, `404 not-found`.
 3. El correo (normalizado) no debe tener ya ≥ 3 reservas activas → si las tiene, `409 active-reservation-limit`.
+4. No debe solapar con reservas no canceladas de esa herramienta → si solapa, `409 overlap-conflict`.
+
+> El límite (3) se evalúa **antes** que el solapamiento (4) — al revés que en la v1.0 — para dar el mensaje más accionable ("ya tienes 3 reservas") cuando el socio está saturado. Ambos son 409; el cliente los distingue por `type`.
 
 **Respuestas**
 
 | Código | Cuerpo | Headers | Caso |
 |--------|--------|---------|------|
-| 201 | `Reserva` | `Location: /api/reservations/{id}` | Creada |
+| 201 | `Reserva` | `Location: <base>/api/reservations/{id}` (URL absoluta) | Creada |
 | 400 | `ProblemDetail` (`malformed-request`) | — | Body no parseable |
 | 422 | `ProblemDetail` (`validation-error`) con `errors[]` | — | Bean Validation falla |
+| 422 | `ProblemDetail` (`validation-error`) sin `errors[]` | — | Regla de fechas (orden, pasado, duración) |
 | 404 | `ProblemDetail` (`not-found`) | — | Herramienta inexistente |
 | 409 | `ProblemDetail` (`overlap-conflict`) | — | Solapamiento |
 | 409 | `ProblemDetail` (`active-reservation-limit`) | — | ≥ 3 reservas activas del correo |
@@ -263,12 +268,13 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 {
   "id": 42,
   "herramientaId": 1,
-  "herramientaNombre": "Taladro percutor Bosch GSB 13 RE",
+  "nombreHerramienta": "Taladro percutor Bosch GSB 13 RE",
   "nombre": "Ada Lovelace",
   "correo": "ada@example.com",
   "fechaInicio": "2026-12-01",
   "fechaFin": "2026-12-05",
-  "estado": "CONFIRMADA"
+  "estado": "CONFIRMADA",
+  "cancelada": false
 }
 ```
 
@@ -276,10 +282,12 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 ```json
 {
   "type": "http://localhost:8080/problems/overlap-conflict",
-  "title": "Herramienta no disponible",
+  "title": "Reserva solapada",
   "status": 409,
-  "detail": "La herramienta ya tiene una reserva que se solapa con el rango 2026-12-01 a 2026-12-05.",
-  "instance": "/api/reservations"
+  "detail": "Ya existe una reserva activa para esta herramienta que se solapa con el rango solicitado.",
+  "herramientaId": 1,
+  "fechaInicio": "2026-12-01",
+  "fechaFin": "2026-12-05"
 }
 ```
 
@@ -289,8 +297,10 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
   "type": "http://localhost:8080/problems/active-reservation-limit",
   "title": "Límite de reservas activas alcanzado",
   "status": 409,
-  "detail": "El correo ada@example.com ya tiene 3 reservas activas (máximo permitido).",
-  "instance": "/api/reservations"
+  "detail": "El correo 'ada@example.com' ya tiene 3 reservas activas y el máximo permitido es 3.",
+  "correo": "ada@example.com",
+  "activasActuales": 3,
+  "maximo": 3
 }
 ```
 
@@ -304,7 +314,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 
 | Nombre | Tipo | Obligatorio | Descripción |
 |--------|------|-------------|-------------|
-| `correo` | string | Sí | Se compara en minúsculas y `trim`. |
+| `correo` | string | Sí | `@NotBlank` + `@Email`. El servicio lo normaliza (minúsculas) antes de consultar, así `ADA@EXAMPLE.COM` encuentra las reservas de `ada@example.com`. |
 
 **Reglas**
 
@@ -317,6 +327,7 @@ GET /api/tools/available?fechaInicio=2026-12-01&fechaFin=2026-12-05&categoria=LI
 |--------|--------|------|
 | 200 | `Reserva[]` | OK (puede ser `[]`) |
 | 400 | `ProblemDetail` (`malformed-request`) | Falta `correo` |
+| 422 | `ProblemDetail` (`validation-error`) con `errors[]` | `correo` con formato inválido |
 
 **Ejemplo — petición**
 ```http
@@ -327,14 +338,14 @@ GET /api/reservations?correo=ada@example.com HTTP/1.1
 ```json
 [
   {
-    "id": 42, "herramientaId": 1, "herramientaNombre": "Taladro percutor Bosch GSB 13 RE",
+    "id": 42, "herramientaId": 1, "nombreHerramienta": "Taladro percutor Bosch GSB 13 RE",
     "nombre": "Ada Lovelace", "correo": "ada@example.com",
-    "fechaInicio": "2026-12-10", "fechaFin": "2026-12-12", "estado": "CONFIRMADA"
+    "fechaInicio": "2026-12-10", "fechaFin": "2026-12-12", "estado": "CONFIRMADA", "cancelada": false
   },
   {
-    "id": 30, "herramientaId": 7, "herramientaNombre": "Lijadora orbital Makita BO5041",
+    "id": 30, "herramientaId": 7, "nombreHerramienta": "Lijadora orbital Makita BO5041",
     "nombre": "Ada Lovelace", "correo": "ada@example.com",
-    "fechaInicio": "2026-11-05", "fechaFin": "2026-11-07", "estado": "FINALIZADA"
+    "fechaInicio": "2026-11-05", "fechaFin": "2026-11-07", "estado": "FINALIZADA", "cancelada": false
   }
 ]
 ```
@@ -362,9 +373,11 @@ GET /api/reservations?correo=ada@example.com HTTP/1.1
 
 | Código | Cuerpo | Caso |
 |--------|--------|------|
-| 204 | (vacío) | Cancelación OK |
+| 200 | `Reserva` (con `estado: "CANCELADA"`, `cancelada: true`) | Cancelación OK |
 | 404 | `ProblemDetail` (`not-found`) | Reserva inexistente |
-| 409 | `ProblemDetail` (`cancellation-not-allowed`) | Ya iniciada, finalizada o cancelada |
+| 409 | `ProblemDetail` (`cancellation-not-allowed`, con `motivo`) | Ya iniciada, finalizada o cancelada |
+
+> **v1.0 especificaba `204 No Content`.** Se implementó `200 OK` con el DTO actualizado para que el frontend sustituya la fila sin un segundo GET (CA-R07.2). Ver doc 01 §10.
 
 **Ejemplo — respuesta 409**
 ```json
@@ -372,10 +385,13 @@ GET /api/reservations?correo=ada@example.com HTTP/1.1
   "type": "http://localhost:8080/problems/cancellation-not-allowed",
   "title": "Cancelación no permitida",
   "status": 409,
-  "detail": "La reserva 42 no se puede cancelar: ya ha comenzado o ha finalizado.",
-  "instance": "/api/reservations/42"
+  "detail": "No se puede cancelar: la reserva ya está cancelada.",
+  "reservaId": 42,
+  "motivo": "YA_CANCELADA"
 }
 ```
+
+`detail` según `motivo`: `YA_INICIADA` → "…la reserva ya ha comenzado."; `YA_FINALIZADA` → "…la reserva ya ha finalizado."; `YA_CANCELADA` → "…la reserva ya está cancelada.".
 
 ---
 
@@ -473,7 +489,7 @@ Lanzadas por los **servicios** (`ToolService`, `ReservationService`). Nunca por 
 | `CancelacionNoPermitidaException` | Intento de cancelar reserva iniciada/finalizada/cancelada (R05) | 409 | `cancellation-not-allowed` |
 | `ReglaValidacionException` (base, subpaquete `com.ch.prueba.herramientas.exceptions.reglas` con subclases `FechaEnPasadoException`, `DuracionExcesivaException`, `RangoFechasInvalidoException`) | Reglas de negocio sobre fechas (R02) | 422 | `validation-error` |
 
-Todas heredan de una raíz común `DomainException` (en el mismo paquete) para que el handler pueda agruparlas si conviene. Cada excepción lleva en su constructor los datos necesarios para componer `detail` (ej. `new SolapamientoReservaException(herramientaId, fechaInicio, fechaFin)`), **sin** incluir texto ya formateado en inglés/español — el mensaje legible lo compone el handler.
+Todas heredan de una raíz común `DomainException` (en el mismo paquete) para que el handler pueda agruparlas si conviene. Cada excepción lleva en su constructor los datos necesarios para componer `detail` (ej. `new SolapamientoReservaException(herramientaId, fechaInicio, fechaFin)`) y el handler compone el mensaje legible. Excepción a esta regla: las subclases de `ReglaValidacionException` sí construyen su propio mensaje en español (p. ej. "Duración 8 días supera el máximo permitido de 7"), que el handler usa como `detail` tal cual.
 
 ### 6-bis.2 Excepciones Spring mapeadas por el handler
 
@@ -481,7 +497,7 @@ Sin crear excepciones propias, el `GlobalExceptionHandler` también maneja:
 
 | Excepción Spring | HTTP | `type` |
 |------------------|------|--------|
-| `MethodArgumentNotValidException` (Bean Validation en `@RequestBody`) | 422 | `validation-error` + `errors[]` con `{field, message}` por cada `FieldError` |
+| `MethodArgumentNotValidException` (Bean Validation en `@RequestBody`) | 422 | `validation-error` + `errors[]` con `{campo, mensaje, valorRechazado}` por cada `FieldError` |
 | `ConstraintViolationException` (Bean Validation en `@RequestParam` / `@PathVariable`) | 422 | `validation-error` + `errors[]` |
 | `HttpMessageNotReadableException` | 400 | `malformed-request` |
 | `MissingServletRequestParameterException` | 400 | `malformed-request` |
@@ -514,7 +530,7 @@ public class GlobalExceptionHandler {
 
 Cada handler devuelve directamente un `ProblemDetail` (soporte nativo desde Spring Boot 3, incluye 4.x) con el status, `type`, `title`, `detail` y, cuando aplique, `errors[]`.
 
-> **Testing (D19):** `GlobalExceptionHandlerTest` contiene un `@Test` por cada fila de las tablas 6-bis.1 y 6-bis.2, instanciando el handler directamente (test unitario puro, sin cargar contexto Spring) o con `@WebMvcTest` + `MockMvc` si se quiere verificar también el content-type `application/problem+json`.
+> **Testing (D19):** el plan v1.0 preveía un `GlobalExceptionHandlerTest` dedicado. **No se implementó**: el handler se ejercita a través de los slices `@WebMvcTest` (`ToolControllerTest`, `ReservationControllerTest`), que importan el handler real y verifican status, `type` y `application/problem+json` para 400 `malformed-request`, 422 `validation-error` (con y sin `errors[]`), 409 `overlap-conflict`, 409 `active-reservation-limit` y 409 `cancellation-not-allowed`. Quedan sin test automatizado los mapeos 404 `not-found`, `ConstraintViolationException` y el fallback 500 (verificados manualmente en el smoke test). Ver doc 02, matriz de trazabilidad.
 
 ---
 
@@ -522,42 +538,34 @@ Cada handler devuelve directamente un `ProblemDetail` (soporte nativo desde Spri
 
 Riesgo: dos POST simultáneos para la misma herramienta y mismo rango podrían crear dos reservas si el chequeo de solapamiento ocurre antes de persistir.
 
-**Estrategia:**
+**Implementado (MVP):** `ReservationService.crear(...)` es `@Transactional` (aislamiento por defecto, `READ_COMMITTED` en H2) y comprueba el solapamiento con `findSolapadas(...)` dentro de la transacción, justo antes de guardar. Esto cubre el caso secuencial (CA-R03.1–R03.6), pero **no** garantiza exclusión entre dos transacciones simultáneas: ambas podrían leer "sin solape" antes de que la otra haga commit.
 
-1. El servicio `ReservationService.crear(...)` se marca `@Transactional` con aislamiento por defecto (`READ_COMMITTED` en H2).
-2. Dentro de la transacción:
-   a. Se bloquea pesimísticamente la herramienta: `SELECT ... FROM herramientas WHERE id = :id FOR UPDATE` (en JPA: `@Lock(LockModeType.PESSIMISTIC_WRITE)` en el repositorio).
-   b. Se vuelve a comprobar el solapamiento.
-   c. Se guarda la reserva.
-3. La segunda transacción queda a la espera hasta que la primera hace commit; al proceder, ve la reserva ya existente y lanza `SolapamientoReservaException` (→ `409 overlap-conflict`).
+**Estrategia prevista (no implementada — deuda técnica aceptada, coherente con S9):**
 
-> **Nota de alcance de pruebas (D19):** esta estrategia se **documenta** pero **no se cubre con test automatizado** en el MVP (requeriría test multi-hilo con `@DataJpaTest` o `@SpringBootTest` + ejecutores concurrentes, fuera del alcance de los tests unitarios con mocks). El código refleja la estrategia; su verificación queda como deuda técnica aceptada.
+1. Dentro de la misma transacción, bloquear pesimísticamente la herramienta: `SELECT ... FROM herramientas WHERE id = :id FOR UPDATE` (en JPA: `@Lock(LockModeType.PESSIMISTIC_WRITE)` en un método de `HerramientaRepository`).
+2. Volver a comprobar el solapamiento y guardar.
+3. La segunda transacción espera al commit de la primera; al continuar ve la reserva existente y lanza `SolapamientoReservaException` (→ `409 overlap-conflict`).
+
+> **Por qué no se implementó:** sin un test multi-hilo (`@DataJpaTest`/`@SpringBootTest` + ejecutores concurrentes, fuera de D19) el bloqueo no se podría demostrar, y S9 asume que no hay concurrencia hostil. La v1.0 lo describía como si estuviera implementado; se corrige para no sobredeclarar. Es la primera mejora a abordar si el sistema pasara a uso real.
 
 ---
 
 ## 8. OpenAPI / Swagger
 
-El backend expone **springdoc-openapi**:
+El backend expone **springdoc-openapi 3.2.1** (línea 3.x, la compatible con Spring Boot 4; la 2.6.0 inicial devolvía 500 en `/v3/api-docs`):
 
-- OpenAPI JSON: `GET /v3/api-docs`
+- OpenAPI JSON: `GET /v3/api-docs` (OpenAPI 3.1.0)
 - Swagger UI: `GET /swagger-ui.html`
 
-El contrato generado debe coincidir con este documento. Si hay discrepancia, **este documento manda** y se corrige el código.
+El contrato generado debe coincidir con este documento. Si hay discrepancia, **este documento manda** y se corrige el código (la v1.1 de este documento ya refleja el código verificado).
 
 ---
 
 ## 9. CORS
 
-Perfil `dev`:
+**No se configura CORS en el backend.** En desarrollo, Angular sirve todo bajo `http://localhost:4200` y `proxy.conf.json` reenvía `/api/*` a `http://localhost:8080`, de modo que el navegador nunca hace peticiones cross-origin (D16).
 
-```java
-registry.addMapping("/api/**")
-        .allowedOrigins("http://localhost:4200")
-        .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
-        .allowedHeaders("*");
-```
-
-En desarrollo también se usará `proxy.conf.json` en Angular para evitar CORS y servir todo bajo `http://localhost:4200/api/*`. Ambas opciones se mantienen; el proxy es la preferida.
+La v1.0 preveía además un `CorsRegistry` para `http://localhost:4200` en el perfil `dev`. Se descartó: con el proxy es redundante y añade superficie de configuración. Si el frontend se desplegara en otro origen, habría que añadirlo (o un `@CrossOrigin` acotado).
 
 ---
 

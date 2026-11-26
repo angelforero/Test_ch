@@ -1,6 +1,7 @@
 # 01 — Alcance y Suposiciones
 
-> **Versión:** 1.0 · **Fecha:** 2026-11-22 · **Autor:** Equipo de desarrollo
+> **Versión:** 1.1 · **Fecha:** 2026-11-25 (v1.0: 2026-11-22) · **Autor:** Equipo de desarrollo
+> *v1.1: se mantienen las decisiones; se corrigen las que la implementación cambió (D8, D10, S9, S10) y se registran en §10.*
 > Este documento encuadra la solución antes de escribir código. Las decisiones aquí tomadas son el marco para los documentos 02 (requisitos), 03 (contrato API) y 04 (arquitectura frontend).
 
 ---
@@ -52,9 +53,9 @@ Una **reserva** ocupa una herramienta durante un rango de fechas (inicio y fin, 
 | D6 | Validación | **Jakarta Bean Validation** (`@Valid`, `@NotBlank`, `@Email`, `@Future`, etc.) + `@ControllerAdvice` para formato uniforme | Integración nativa con Spring MVC. |
 | D7 | Formato de errores | **RFC 7807 — Problem Details for HTTP APIs** (`application/problem+json`), gestionado **exclusivamente de forma centralizada** mediante un único `@RestControllerAdvice` global (`GlobalExceptionHandler`) que mapea **excepciones personalizadas de dominio** a respuestas HTTP. | Estándar, soportado nativamente desde Spring Boot 3 (incluye 4.x) vía la clase `ProblemDetail`. La centralización elimina `try/catch` + `ResponseEntity` de los controladores y garantiza coherencia. Ver detalle en D7-bis y en el doc 03 §6-bis. |
 | D7-bis | Excepciones personalizadas | Jerarquía propia bajo un paquete `exceptions/`, lanzada por los **servicios** (no por los controladores). El `GlobalExceptionHandler` tiene un `@ExceptionHandler` por cada una. Los controladores **nunca** hacen `try/catch` para traducir errores a HTTP. | Los servicios expresan intención de negocio ("no se puede cancelar") en vez de acoplarse a HTTP. El mapeo a código y `ProblemDetail` ocurre en un único punto. |
-| D8 | Documentación API | **springdoc-openapi** (Swagger UI en `/swagger-ui.html`) | OpenAPI 3 autogenerado; útil para que el frontend consuma el contrato. |
+| D8 | Documentación API | **springdoc-openapi 3.2.1** (Swagger UI en `/swagger-ui.html`) | OpenAPI 3 autogenerado; útil para que el frontend consuma el contrato. La línea 3.x es la compatible con Spring Boot 4 (ver §10, 2026-11-25). |
 | D9 | Framework frontend | **Angular 19** (ya scaffoldeado) | Requisito del enunciado; standalone components, control flow nuevo (`@if`, `@for`). |
-| D10 | HTTP en frontend | `HttpClient` + `provideHttpClient(withFetch())` | API nativa de Angular, sin librerías extra. |
+| D10 | HTTP en frontend | `HttpClient` + `provideHttpClient(withInterceptors([problemDetailInterceptor]))` | API nativa de Angular, sin librerías extra. (`withFetch()` previsto en v1.0 no se usó: sin SSR no aporta.) |
 | D11 | Estado frontend | **Signals** + servicios inyectables | Angular 19 trae signals estables; no se necesita NgRx para este alcance. |
 | D12 | Estilos | **CSS plano** en los componentes (sin librería UI pesada) | Prioridad en funcionalidad; se puede añadir Angular Material como mejora. |
 | D13 | Testing backend | **JUnit 5 + Spring Boot Test + MockMvc** | Stack por defecto de Spring Boot. |
@@ -81,8 +82,8 @@ Las siguientes afirmaciones se dan por ciertas; si alguna cambia, la solución s
 | S6 | "Hoy" se calcula con la zona horaria **Europe/Madrid** del servidor. El cliente muestra fechas en el mismo huso. | Coherencia entre validaciones de API y UI. |
 | S7 | El rango de fechas de una reserva es **inclusivo en ambos extremos**: una reserva del 1 al 3 ocupa los días 1, 2 y 3 (3 días). | Afecta al cálculo de duración máxima (7 días = fin − inicio + 1 ≤ 7). |
 | S8 | La cancelación es permitida **hasta el día anterior al inicio**. Si hoy = fecha de inicio o posterior, no se puede cancelar. | Criterio de R05. |
-| S9 | No hay **concurrencia hostil** (dos usuarios reservando la misma herramienta en el mismo instante). Aun así, la validación de solapamiento se hace a nivel de base de datos con transacción para evitar carreras. | Robustez básica suficiente para la prueba. |
-| S10 | El volumen de carga para medir R09 (200 herramientas, 5.000 reservas) se genera con un script o seeder en perfil `perf`. | Permite demostrar el cumplimiento del requisito no funcional. |
+| S9 | No hay **concurrencia hostil** (dos usuarios reservando la misma herramienta en el mismo instante). La comprobación de solapamiento se hace dentro de una transacción, pero **sin bloqueo pesimista**: dos peticiones simultáneas podrían colarse (doc 03 §7). | Robustez básica suficiente para la prueba; el bloqueo queda como deuda documentada. |
+| S10 | El volumen de carga para medir R09 (200 herramientas, 5.000 reservas) se generaría con un seeder en perfil `perf`. **No implementado** (v1.1). | R09 se apoya en el diseño (query única + índices) pero no se ha medido. |
 
 ---
 
@@ -149,8 +150,8 @@ La solución se considera completa cuando:
 
 1. Se arranca el backend (`mvn spring-boot:run`) y el frontend (`ng serve`) con un único comando por parte y sin configuración manual adicional.
 2. Un usuario puede, sin ver la consola de red, completar el flujo: **abrir la app → elegir fechas → ver disponibilidad → reservar → ir a "mis reservas" → cancelar**.
-3. Los 9 requisitos R01–R09 tienen sus criterios de aceptación (ver documento 02) validados por al menos una prueba automatizada.
-4. El contrato OpenAPI expuesto por el backend coincide con los modelos consumidos por el frontend.
+3. Los 9 requisitos R01–R09 tienen sus criterios de aceptación (ver documento 02) validados por al menos una prueba automatizada. *(Estado v1.1: cumplido para R01–R08; R09 no tiene test de latencia — ver doc 02.)*
+4. El contrato OpenAPI expuesto por el backend coincide con los modelos consumidos por el frontend. *(Estado v1.1: `/v3/api-docs` operativo desde el cambio a springdoc 3.2.1.)*
 
 ---
 
@@ -163,6 +164,9 @@ La solución se considera completa cuando:
 | Sin autenticación → cualquiera puede ver/cancelar reservas de un correo que conozca. | Documentado como fuera de alcance; en producción se exigiría login. |
 | Sin paginación en `GET /tools` (10–200 elementos esperados). | Suficiente para el MVP; se añadiría si el catálogo creciera. |
 | Sin rate limiting. | Fuera de alcance. |
+| Sin bloqueo pesimista en la creación de reservas (CA-R03.7). | Documentado en doc 03 §7; primera mejora si hubiera uso real. |
+| R09 (< 500 ms con 200 herramientas / 5.000 reservas) no medido. | Query única `NOT EXISTS` + índices; falta perfil `perf` y test con tag `@performance`. |
+| Redes con inspección TLS: Maven no confía en el certificado del proxy (`PKIX path building failed`). | Ejecutar con `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` (usa el almacén de Windows). No es un cambio del proyecto. |
 
 ---
 
@@ -181,3 +185,6 @@ Registro de cambios materiales sobre las decisiones técnicas (D1–D19) posteri
 | 2026-11-23 | **D19** | Cobertura frontend reinterpretada como mínimo del 30 %, sin máximo | Durante el commit 10 se interpretó inicialmente el 30 % solicitado como techo y se creó un checker máximo; los tests reales alcanzaron 86 %. Antes del commit 11 el usuario aclaró la intención: le interesa una cobertura **mínima del 30 %** y cualquier valor superior es correcto. Se elimina `check-coverage-max.js` y se sustituye por `scripts/check-coverage-min.js`, que exige ≥30 % en statements, branches, functions y lines. `src/all-sources.ts` permanece para que el denominador incluya todos los módulos de la app. |
 | 2026-11-23 | **D15** | Categorías en frontend como enum TypeScript, sin endpoint `GET /api/categories` | El catálogo de categorías es finito (7 valores), estable (cambiarlo exige redeploy) y ya está definido como enum en el backend (`Categoria.java`). Hardcodear el mismo enum en el frontend (`src/app/features/tools/models/categoria.ts`) evita un endpoint extra y un round-trip HTTP en cada carga del formulario. La desalineación entre front y back se detectaría en el primer POST con valor desconocido (el controller rechaza enum inválido con 400). Si en el futuro el catálogo pasa a ser dinámico, se sustituye el enum por una llamada al endpoint sin romper nada en la UI. |
 | 2026-11-25 | **R05 / D15** | Commit 12 — `MyReservationsComponent` reemplaza al placeholder | Pantalla `/mis-reservas` implementada: formulario reactivo con `correo` (`required` + `email`), botón *Buscar* que llama `ReservationsService.listarPorCorreo()`, tabla con nombre de herramienta, fechas, badge de estado derivado y botón *Cancelar* visible sólo cuando `estado === CONFIRMADA`. La cancelación usa `window.confirm()` nativo (sin modal propio para no inflar el alcance), llama `DELETE /api/reservations/{id}` y actualiza la fila con el DTO devuelto. Los 409 `cancellation-not-allowed` se muestran en el `ErrorBannerComponent` con traducción humana del motivo (`YA_INICIADA` / `YA_FINALIZADA` / `YA_CANCELADA`). Decisión explícita de **no persistir el correo en `localStorage`**: evita confusiones si el equipo es compartido y mantiene la pantalla stateless. Cobertura frontend sube a ~86 % con 35 tests verdes; `R07` de la trazabilidad pasa de "placeholder" a implementado. |
+| 2026-11-25 | **R02 / R04** | Normalización del correo (`trim` + minúsculas) implementada | El smoke test de cierre detectó que la convención del doc 02 ("el correo se normaliza") no estaba implementada: con 3 reservas activas de `limite@example.com`, una cuarta con `LIMITE@EXAMPLE.COM` se aceptaba (R04 eludible) y "Mis reservas" no encontraba reservas con otro casing. Se normaliza en dos puntos: constructor compacto de `ReservaCreacionDto` (antes de Bean Validation, para que `"  Ada@Example.COM  "` no dé 422 por los espacios) y `ReservationService.normalizarCorreo()` (crear, contar activas, listar). +4 tests. Commit `86544a3`. |
+| 2026-11-25 | **D8** | springdoc-openapi `2.6.0` → `3.2.1` | La 2.6.0 es la línea de Spring Boot 3: sobre Spring 7 lanzaba `NoSuchMethodError` (`ControllerAdviceBean.<init>`) y `/v3/api-docs` devolvía 500, de modo que Swagger UI cargaba vacío. 3.2.1 está compilada contra Spring Boot 4.2.0. Efecto colateral: `ReservationControllerTest` usaba `ObjectMapper` + `JavaTimeModule` de **Jackson 2**, que solo llegaban transitivamente vía springdoc 2.x; se migró a `JsonMapper` de **Jackson 3** (`tools.jackson`, el de Boot 4), que soporta `java.time` sin módulos. No se añaden dependencias. Commit `63ca43a`. |
+| 2026-11-25 | **Docs 02/03/04 → v1.1** | Especificación alineada con la implementación verificada | Revisión de cierre contrastando spec ↔ código ↔ smoke tests. Cambios de contrato aceptados (el código ya era coherente y probado; cambiarlo al final era más arriesgado que documentarlo): **(a)** `DELETE` devuelve `200` + `Reserva` en vez de `204` (la UI reemplaza la fila sin otro GET); **(b)** el DTO expone `nombreHerramienta` (no `herramientaNombre`) y `cancelada`; **(c)** `errors[]` usa `{campo, mensaje, valorRechazado}` (claves en español como el resto del dominio); **(d)** `instance` no se emite (opcional en RFC 7807); **(e)** la disponibilidad aplica las mismas reglas de rango que la reserva (no pasado, ≤ 7 días) vía `ValidadorRango` compartido; **(f)** orden de reglas al crear: límite (R04) antes que solape (R03), para dar el mensaje más accionable; **(g)** categoría inválida → 400 `malformed-request` (CA-R01.3) y rango invertido en disponibilidad → 422 (CA-R01.6); **(h)** sin `CorsRegistry`: solo proxy (D16); **(i)** el bloqueo pesimista de doc 03 §7 se reclasifica como **no implementado**; **(j)** la UI de R06 usa dos rutas (`/herramientas`, `/nueva-reserva`) en vez de una página con botón "Reservar" por fila; doc 04 reescrito para reflejar la estructura real (`ToolsService`/`ReservationsService`, `AppError`, `window.confirm`, rutas). La matriz de trazabilidad del doc 02 lista ahora los tests reales; `DataSeederTest`, `GlobalExceptionHandlerTest` y el test de rendimiento de R09 no existen y se declara así. La v1.0 sigue en el historial Git (`97a2469`, `d5aeabe`). |

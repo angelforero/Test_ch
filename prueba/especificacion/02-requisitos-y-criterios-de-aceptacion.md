@@ -1,8 +1,10 @@
 # 02 — Requisitos y Criterios de Aceptación
 
-> **Versión:** 1.0 · **Fecha:** 2026-11-22
+> **Versión:** 1.1 · **Fecha:** 2026-11-25 (v1.0: 2026-11-22)
 > Reescritura detallada de los 9 requisitos del enunciado (R01–R09) con criterios de aceptación en formato **Gherkin** (Given/When/Then), casos borde y trazabilidad a endpoints y pantallas.
 > Las referencias `[API: …]` apuntan al documento `03-contrato-api.md` y `[UI: …]` al `04-arquitectura-frontend.md`.
+>
+> **v1.1:** se ajustan los criterios cuyo resultado esperado difería de la implementación verificada (códigos HTTP de CA-R01.3, CA-R01.6, CA-R05.1/2, CA-R07.2; flujo de CA-R06.4; formato de `errors[]`) y la matriz de trazabilidad pasa a listar los tests **reales**. Cada cambio está marcado con *(v1.1)* y justificado en el doc 01 §10.
 
 ---
 
@@ -21,7 +23,7 @@
 **Descripción.** El API ofrece el catálogo de herramientas (id, nombre, categoría), con filtro opcional por categoría, y permite consultar qué herramientas están disponibles para un rango de fechas. La solución parte de al menos **10 herramientas precargadas**.
 
 **Endpoints relacionados:** `[API: GET /api/tools]`, `[API: GET /api/tools/available]`
-**Pantallas relacionadas:** `[UI: BuscarYReservarPage]`
+**Pantallas relacionadas:** `[UI: /herramientas — ToolsListComponent]`
 
 ### Criterios de aceptación
 
@@ -46,8 +48,9 @@ And todas las herramientas devueltas tienen categoria = PERFORACION
 ```gherkin
 When un cliente hace GET /api/tools?categoria=INEXISTENTE
 Then la respuesta es 400 Bad Request
-And el body es un ProblemDetail con type "validation-error"
+And el body es un ProblemDetail con type "malformed-request"
 ```
+*(v1.1: v1.0 decía `validation-error`; un valor que no se puede convertir al enum es una petición mal formada — `MethodArgumentTypeMismatchException` → `malformed-request`, coherente con doc 03 §6-bis.2.)*
 
 **CA-R01.4 — Consultar disponibilidad en un rango**
 ```gherkin
@@ -68,9 +71,14 @@ Then solo devuelve herramientas de categoría LIJADO disponibles en ese rango
 **CA-R01.6 — Validación de fechas en disponibilidad**
 ```gherkin
 When un cliente hace GET /api/tools/available?fechaInicio=2026-12-10&fechaFin=2026-12-05
-Then la respuesta es 400 Bad Request
-And el ProblemDetail indica "fechaFin debe ser mayor o igual a fechaInicio"
+Then la respuesta es 422 Unprocessable Entity
+And el ProblemDetail tiene type "validation-error" e indica que fechaFin es anterior a fechaInicio
+
+# Mismas reglas que al reservar (ValidadorRango compartido):
+When el rango empieza antes de hoy o dura más de 7 días
+Then la respuesta es 422 Unprocessable Entity
 ```
+*(v1.1: v1.0 decía 400 aquí, en contradicción con doc 03 §4.2 que ya decía 422. Además la consulta aplica ahora las reglas de "no pasado" y "máx. 7 días".)*
 
 **CA-R01.7 — Faltan parámetros de fecha**
 ```gherkin
@@ -93,7 +101,7 @@ And al menos 4 categorías distintas están representadas
 **Descripción.** Una persona (nombre + correo) reserva una herramienta para un rango de fechas. Duración máxima **7 días**. La fecha de inicio **no puede ser anterior a hoy**.
 
 **Endpoints relacionados:** `[API: POST /api/reservations]`
-**Pantallas relacionadas:** `[UI: BuscarYReservarPage → modal/acción Reservar]`
+**Pantallas relacionadas:** `[UI: /nueva-reserva — ReservationFormComponent]`
 
 ### Criterios de aceptación
 
@@ -287,7 +295,7 @@ Then la respuesta es 409 Conflict  # mismo correo, distinto casing
 **Descripción.** El API permite **cancelar** una reserva hasta el día anterior a su fecha de inicio, y **consultar** las reservas de una persona con su estado.
 
 **Endpoints relacionados:** `[API: DELETE /api/reservations/{id}]`, `[API: GET /api/reservations?correo=...]`
-**Pantallas relacionadas:** `[UI: MisReservasPage]`
+**Pantallas relacionadas:** `[UI: /mis-reservas — MyReservationsComponent]`
 
 ### Criterios de aceptación
 
@@ -296,16 +304,17 @@ Then la respuesta es 409 Conflict  # mismo correo, distinto casing
 Given hoy es 2026-11-22
 And existe una reserva R1 con fechaInicio = 2026-11-25
 When se hace DELETE /api/reservations/R1
-Then la respuesta es 204 No Content
-And el estado de R1 pasa a CANCELADA
+Then la respuesta es 200 OK
+And el body es la Reserva R1 con estado CANCELADA y cancelada = true
 ```
+*(v1.1: v1.0 decía 204 No Content; se devuelve el DTO para que la UI actualice la fila sin otro GET.)*
 
 **CA-R05.2 — Cancelar el día anterior al inicio (permitido)**
 ```gherkin
 Given hoy es 2026-11-24
 And R1 tiene fechaInicio = 2026-11-25
 When se hace DELETE /api/reservations/R1
-Then la respuesta es 204 No Content
+Then la respuesta es 200 OK con estado CANCELADA
 ```
 
 **CA-R05.3 — Cancelar el mismo día del inicio (rechazado)**
@@ -360,46 +369,56 @@ When se hace GET /api/reservations sin el parámetro correo
 Then la respuesta es 400 Bad Request
 ```
 
+**CA-R05.10 — Consulta con correo en distinto casing** *(v1.1)*
+```gherkin
+Given ada@example.com tiene reservas
+When se hace GET /api/reservations?correo=ADA@EXAMPLE.COM
+Then la respuesta es 200 OK con las mismas reservas
+```
+
 ---
 
 ## R06 — Pantalla de búsqueda y reserva
 
 **Descripción.** La interfaz permite elegir un rango de fechas, ver las herramientas disponibles (con filtro por categoría) y reservar una de ellas, mostrando los errores del API con claridad.
 
-**Pantallas relacionadas:** `[UI: BuscarYReservarPage]`
+**Pantallas relacionadas:** `[UI: /herramientas + /nueva-reserva]`
 
 ### Criterios de aceptación
 
+> **Implementación (v1.1):** R06 se reparte en **dos rutas** en lugar de una sola página: `/herramientas` (catálogo con filtro + formulario de disponibilidad + resultados) y `/nueva-reserva` (formulario de reserva). Ver doc 04 §3.
+
 **CA-R06.1 — Flujo feliz**
 ```gherkin
-Given el usuario está en la pantalla "Buscar y reservar"
-When selecciona fechaInicio = 2026-12-01, fechaFin = 2026-12-03 y pulsa "Buscar"
-Then se listan las herramientas disponibles en ese rango
+Given el usuario está en la pantalla "Catálogo" (/herramientas)
+When selecciona Desde = 2026-12-01, Hasta = 2026-12-03 y pulsa "Consultar"
+Then se listan en "Disponibles en el rango" las herramientas disponibles
 ```
 
 **CA-R06.2 — Filtro por categoría**
 ```gherkin
-Given hay resultados visibles
-When el usuario elige categoría "LIJADO" en el selector
-Then la lista se filtra para mostrar solo herramientas LIJADO disponibles
+Given el usuario está en la pantalla "Catálogo"
+When elige categoría "Lijado" en el formulario de disponibilidad y pulsa "Consultar"
+Then solo se muestran herramientas LIJADO disponibles (filtro enviado al API)
+And el selector "Filtrar por categoría" del catálogo filtra la tabla en cliente
 ```
 
 **CA-R06.3 — Validación local antes de llamar al API**
 ```gherkin
-Given el usuario introduce fechaInicio > fechaFin
-When pulsa "Buscar"
-Then no se hace llamada al API
+Given el usuario introduce fechaInicio > fechaFin, una fecha pasada o más de 7 días
+Then el botón "Consultar" queda deshabilitado y no se hace llamada al API
 And se muestra un mensaje de validación inline
 ```
 
-**CA-R06.4 — Reservar desde la lista**
+**CA-R06.4 — Reservar una herramienta** *(v1.1)*
 ```gherkin
-Given hay herramientas visibles
-When el usuario pulsa "Reservar" en una herramienta e introduce nombre y correo válidos
+Given el usuario está en "Nueva reserva" (/nueva-reserva)
+When elige una herramienta del catálogo, introduce nombre, correo y fechas válidos y pulsa "Crear reserva"
 Then se hace POST /api/reservations
-And al recibir 201 se muestra confirmación visible ("Reserva #123 creada")
-And la herramienta reservada desaparece o se marca como no disponible en la lista
+And al recibir 201 se muestra una tarjeta de confirmación con número, herramienta, fechas y estado
+And se conservan nombre y correo para la siguiente reserva; herramienta y fechas se limpian
 ```
+*(v1.1: v1.0 preveía un botón "Reservar" en cada fila de la lista de disponibles y retirar la herramienta reservada de la lista. Se implementó como pantalla separada que reutiliza el catálogo; no hay acceso directo desde la fila. Queda como mejora de UX — ver doc 01 §10.)*
 
 **CA-R06.5 — Error del API visible**
 ```gherkin
@@ -415,6 +434,7 @@ When una petición al API está en curso
 Then el botón que la disparó queda deshabilitado
 And se muestra un indicador de carga
 ```
+*(Implementado en "Crear reserva" → "Creando reserva…", "Buscar" → "Buscando…", "Cancelar" → "Cancelando…" y en el catálogo "Cargando…". El botón "Consultar" de disponibilidad solo se deshabilita por formulario inválido, no durante la petición.)*
 
 ---
 
@@ -422,7 +442,7 @@ And se muestra un indicador de carga
 
 **Descripción.** La interfaz permite a una persona consultar sus reservas por correo y cancelarlas.
 
-**Pantallas relacionadas:** `[UI: MisReservasPage]`
+**Pantallas relacionadas:** `[UI: /mis-reservas — MyReservationsComponent]`
 
 ### Criterios de aceptación
 
@@ -436,9 +456,9 @@ Then se listan sus reservas con id, herramienta, rango de fechas y estado
 **CA-R07.2 — Cancelar desde la lista**
 ```gherkin
 Given el usuario ve una reserva CONFIRMADA con botón "Cancelar"
-When pulsa "Cancelar" y confirma la acción
+When pulsa "Cancelar" y confirma la acción (window.confirm)
 Then se hace DELETE /api/reservations/{id}
-And al recibir 204 la reserva pasa a CANCELADA en la lista sin recargar
+And al recibir 200 la fila se sustituye por el DTO devuelto (estado CANCELADA) sin recargar
 ```
 
 **CA-R07.3 — Botón deshabilitado si no se puede cancelar**
@@ -450,13 +470,21 @@ Then el botón "Cancelar" está deshabilitado o no se muestra
 **CA-R07.4 — Lista vacía**
 ```gherkin
 Given el correo introducido no tiene reservas
-Then se muestra un mensaje "No hay reservas para este correo"
+Then se muestra un mensaje "No se encontraron reservas para este correo."
 ```
 
 **CA-R07.5 — Correo malformado**
 ```gherkin
 When el usuario introduce un correo con formato inválido
-Then se muestra validación inline y no se llama al API
+Then el botón "Buscar" queda deshabilitado y no se llama al API
+```
+
+**CA-R07.6 — Cancelación rechazada por el API** *(v1.1)*
+```gherkin
+Given la reserva ya no es cancelable en el servidor (p. ej. se canceló desde otra sesión)
+When el usuario pulsa "Cancelar" y confirma
+Then el API responde 409 cancellation-not-allowed
+And el ErrorBanner muestra el detail del API y una explicación según motivo
 ```
 
 ---
@@ -472,8 +500,9 @@ Then se muestra validación inline y no se llama al API
 Given cualquier respuesta de error (4xx o 5xx) del API
 Then el Content-Type es "application/problem+json"
 And el body sigue la estructura RFC 7807:
-  { type, title, status, detail, instance, errors? }
+  { type, title, status, detail, errors?, <propiedades extra por tipo> }
 ```
+*(v1.1: `instance` no se incluye en la implementación — es opcional en RFC 7807. Ver doc 03 §3.)*
 
 **CA-R08.2 — Códigos HTTP coherentes**
 ```gherkin
@@ -489,7 +518,7 @@ And el body sigue la estructura RFC 7807:
 ```gherkin
 When se envía un POST con 3 campos inválidos
 Then la respuesta 422 incluye un array "errors" con 3 entradas
-And cada entrada tiene { field, message }
+And cada entrada tiene { campo, mensaje, valorRechazado? }
 ```
 
 **CA-R08.4 — No se filtran stack traces**
@@ -538,20 +567,24 @@ Then el assertion verifica latencia < 500 ms
 And la prueba se puede excluir del build por defecto (tag @performance)
 ```
 
+> **Estado de R09 (v1.1):** CA-R09.2 (índices `idx_reservas_herramienta`, `idx_reservas_rango`, `idx_reservas_correo`, declarados en `Reserva`) y CA-R09.3 (`HerramientaRepository.findDisponibles`: una sola query JPQL con `NOT EXISTS`) **están implementados**. CA-R09.1 y CA-R09.4 **no**: no existe el perfil `perf` (S10) ni el test de latencia. El cumplimiento de los 500 ms se argumenta por diseño (query única indexada), no se ha medido. Es la principal pieza pendiente del alcance; ver doc 01 §10.
+
 ---
 
 ## Matriz de trazabilidad
 
-> Estrategia de pruebas: **solo tests unitarios con mocks**, cobertura máxima 75 % (ver D19 en doc 01). Se permite `@SpringBootTest` y slices; **no** hay E2E ni integración multi-servicio. Los tests listados son los **unitarios clave** que validan cada requisito — no una enumeración exhaustiva.
+> Estrategia de pruebas: **solo tests unitarios con mocks** (D19). Backend: JUnit 5 + Mockito + slices `@WebMvcTest`, cobertura JaCoCo ≤ 75 % (73,6 % de líneas al cierre). Frontend: Jasmine/Karma con `HttpTestingController`, cobertura ≥ 30 % (≈ 86 % statements al cierre). **No** hay E2E ni integración multi-servicio; el flujo completo se validó con smoke tests manuales contra el stack arrancado.
+>
+> *(v1.1: la tabla lista los tests **que existen**. La v1.0 citaba `DataSeederTest`, `GlobalExceptionHandlerTest` y `BuscarReservarPage.spec`, que no se llegaron a crear.)* Totales: **backend 36 tests** (`ReservationServiceTest` 13, `ReservationControllerTest` 7, `ToolServiceTest` 6, `ToolControllerTest` 5, `EstadoReservaCalculadorTest` 4, `HerramientasApplicationTests` 1); **frontend 35 tests**.
 
-| Requisito | Endpoints API | Pantallas UI | Tests unitarios clave (con mocks) |
-|-----------|---------------|--------------|-----------------------------------|
-| R01 | `GET /api/tools`, `GET /api/tools/available` | BuscarYReservarPage | `ToolServiceTest` (filtro por categoría, consulta de disponibilidad con repo mockeado); `DataSeederTest` (carga ≥ 10 herramientas al arranque en BD vacía) |
-| R02 | `POST /api/reservations` | BuscarYReservarPage | `ReservationServiceTest` (fecha en el pasado → `ReglaValidacionException`; duración > 7 días → `ReglaValidacionException`); `ReservationControllerTest` con `@WebMvcTest` y `MockMvc` + servicio mockeado |
-| R03 | `POST /api/reservations`, `GET /api/tools/available` | (implícito en disponibilidad) | `ReservationServiceTest` (6 casos de solapamiento 1-6 con repositorio mockeado → `SolapamientoReservaException`); CA-R03.7 (concurrencia) **se documenta pero no se cubre con test** |
-| R04 | `POST /api/reservations` | (error visible en BuscarYReservarPage) | `ReservationServiceTest` (contador de activas con repo mockeado; normalización del correo → `LimiteReservasActivasException`) |
-| R05 | `DELETE /api/reservations/{id}`, `GET /api/reservations` | MisReservasPage | `ReservationServiceTest` (cancelación válida, cancelación el mismo día → `CancelacionNoPermitidaException`, reserva ya cancelada); `EstadoReservaCalculadorTest` (derivación de los 4 estados) |
-| R06 | Todos los anteriores | BuscarYReservarPage | **Frontend unitario**: `BuscarReservarPage.spec` con `HttpTestingController` (happy path + manejo de 409) |
-| R07 | `GET /api/reservations`, `DELETE /api/reservations/{id}` | MisReservasPage (`MyReservationsComponent`) | **Frontend unitario**: `my-reservations.component.spec.ts` con `HttpTestingController` — búsqueda por correo, lista vacía, botón Cancelar solo si `CONFIRMADA`, cancelación OK, confirmación del usuario, 409 `cancellation-not-allowed` con motivo traducido |
-| R08 | `@RestControllerAdvice` global (`GlobalExceptionHandler`) | Interceptor HTTP + `ErrorBanner` | `GlobalExceptionHandlerTest` (un `@Test` por cada excepción personalizada y por cada excepción Spring → verifica status, `type`, formato `ProblemDetail`); `ProblemDetailInterceptorSpec` en frontend |
-| R09 | `GET /api/tools/available` | — | **No se cubre con test unitario** (es un no funcional de latencia que requiere carga). El doc 03 §6 documenta la query y los índices que dan cumplimiento. |
+| Requisito | Endpoints API | Pantallas UI | Tests que lo validan |
+|-----------|---------------|--------------|----------------------|
+| R01 | `GET /api/tools`, `GET /api/tools/available` | `/herramientas` | `ToolServiceTest` (catálogo ordenado, filtro por categoría, disponibilidad delega al repo, rango invertido/pasado/8 días → excepción); `ToolControllerTest` (200, filtro, 422 rango inválido, 400 sin `fechaInicio`). Front: `tools.service.spec`, `tools-list.component.spec`. **Seeder (CA-R01.8): sin test dedicado** — verificado en arranque (10 herramientas, 7 categorías). |
+| R02 | `POST /api/reservations` | `/nueva-reserva` | `ReservationServiceTest` (creación OK, herramienta inexistente, rango invertido, **correo normalizado** CA-R02.9); `ReservationControllerTest` (201 + `Location`, 422 con `errors[]`, **POST con espacios/mayúsculas** CA-R02.9); `ToolServiceTest` cubre pasado y > 7 días vía `ValidadorRango` compartido. Front: `reservation-form.component.spec`, `reservations.service.spec`. |
+| R03 | `POST /api/reservations`, `GET /api/tools/available` | (error visible en `/nueva-reserva`) | `ReservationServiceTest` (solape → `SolapamientoReservaException`); `ReservationControllerTest` (409 `overlap-conflict`). La fórmula de solape vive en la query JPQL (no mockeable): CA-R03.1–R03.6 verificados en smoke test. **CA-R03.7 (concurrencia) no cubierto** — ver doc 03 §7. |
+| R04 | `POST /api/reservations` | (error visible en `/nueva-reserva`) | `ReservationServiceTest` (3 activas → `LimiteReservasActivasException`; **mayúsculas cuentan igual** CA-R04.5); `ReservationControllerTest` (409 `active-reservation-limit`). |
+| R05 | `DELETE /api/reservations/{id}`, `GET /api/reservations` | `/mis-reservas` | `ReservationServiceTest` (cancelar CONFIRMADA, inexistente, YA_CANCELADA, YA_FINALIZADA, YA_INICIADA; **listar normalizado**); `ReservationControllerTest` (DELETE 200 con DTO, 409 `cancellation-not-allowed`); `EstadoReservaCalculadorTest` (4 estados, bordes inclusivos). |
+| R06 | Todos los anteriores | `/herramientas` + `/nueva-reserva` | Front: `availability-form.component.spec` (no emite sin fechas; validadores de orden, pasado y duración), `reservation-form.component.spec` (no envía vacío, crea, muestra 409 de solape), `reservation-success.component.spec`. |
+| R07 | `GET /api/reservations`, `DELETE /api/reservations/{id}` | `/mis-reservas` (`MyReservationsComponent`) | Front: `my-reservations.component.spec` — correo inválido no busca, búsqueda pinta filas, lista vacía, Cancelar solo si `CONFIRMADA`, cancelación OK, `confirm=false` no llama, 409 con motivo traducido. |
+| R08 | `GlobalExceptionHandler` (`@RestControllerAdvice`) | Interceptor + `ErrorBanner` | Back: vía slices `@WebMvcTest` (400, 422 con y sin `errors[]`, tres 409, `application/problem+json`). Sin test: 404, `ConstraintViolationException`, 500. Front: `problem-detail.interceptor.spec` (409, 422, 500, red, type desconocido, throw arbitrario), `error-banner.component.spec`. |
+| R09 | `GET /api/tools/available` | — | **No cubierto con test** (ni perfil `perf`). Diseño: query única `NOT EXISTS` + índices (doc 03 §5.2, §6). |
