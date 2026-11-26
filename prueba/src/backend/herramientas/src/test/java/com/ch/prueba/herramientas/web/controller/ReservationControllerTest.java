@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -76,6 +77,28 @@ class ReservationControllerTest {
                .andExpect(jsonPath("$.id").value(1))
                .andExpect(jsonPath("$.estado").value("CONFIRMADA"))
                .andExpect(jsonPath("$.nombreHerramienta").value("Taladro"));
+    }
+
+    @Test
+    @DisplayName("CA-R02.9: POST con correo con espacios y mayúsculas es válido y llega normalizado")
+    void post_correoConEspacios_llegaNormalizado() throws Exception {
+        String json = """
+            { "herramientaId": 10,
+              "nombre": "Ada",
+              "correo": "  Ada@Example.COM  ",
+              "fechaInicio": "2026-12-01",
+              "fechaFin":    "2026-12-03" }
+            """;
+        ReservaDto creada = new ReservaDto(1L, 10L, "Taladro", "Ada", "ada@example.com",
+                INICIO, FIN, EstadoReserva.CONFIRMADA, false);
+        given(reservationService.crear(argThat(d -> "ada@example.com".equals(d.correo()))))
+                .willReturn(creada);
+
+        mockMvc.perform(post("/api/reservations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.correo").value("ada@example.com"));
     }
 
     @Test

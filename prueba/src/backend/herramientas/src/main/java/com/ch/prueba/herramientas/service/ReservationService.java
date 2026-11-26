@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Servicio de reservas. Implementa las reglas R02, R03, R04 y R05 del
@@ -80,6 +81,7 @@ public class ReservationService {
     @Transactional
     public ReservaDto crear(ReservaCreacionDto dto) {
         LocalDate hoy = LocalDate.now(clock);
+        String correo = normalizarCorreo(dto.correo());
 
         // R02
         ValidadorRango.validar(dto.fechaInicio(), dto.fechaFin(), hoy, ToolService.MAX_DURACION_DIAS);
@@ -88,10 +90,10 @@ public class ReservationService {
         Herramienta herramienta = herramientaRepository.findById(dto.herramientaId())
                 .orElseThrow(() -> new HerramientaNoEncontradaException(dto.herramientaId()));
 
-        // R04
-        long activas = reservaRepository.countActivasByCorreo(dto.correo(), hoy);
+        // R04 (CA-R04.5: el correo se compara normalizado)
+        long activas = reservaRepository.countActivasByCorreo(correo, hoy);
         if (activas >= MAX_RESERVAS_ACTIVAS) {
-            throw new LimiteReservasActivasException(dto.correo(), (int) activas, MAX_RESERVAS_ACTIVAS);
+            throw new LimiteReservasActivasException(correo, (int) activas, MAX_RESERVAS_ACTIVAS);
         }
 
         // R03
@@ -102,7 +104,8 @@ public class ReservationService {
                     herramienta.getId(), dto.fechaInicio(), dto.fechaFin());
         }
 
-        Reserva reserva = new Reserva(herramienta, dto.nombre(), dto.correo(),
+        // CA-R02.9: se persiste el correo normalizado
+        Reserva reserva = new Reserva(herramienta, dto.nombre(), correo,
                 dto.fechaInicio(), dto.fechaFin());
         Reserva persistida = reservaRepository.save(reserva);
         return ReservaMapper.toDto(persistida, hoy);
@@ -145,7 +148,16 @@ public class ReservationService {
     public List<ReservaDto> listarPorCorreo(String correo) {
         LocalDate hoy = LocalDate.now(clock);
         return ReservaMapper.toDtoList(
-                reservaRepository.findByCorreoOrderByFechaInicioDesc(correo), hoy);
+                reservaRepository.findByCorreoOrderByFechaInicioDesc(normalizarCorreo(correo)), hoy);
+    }
+
+    /**
+     * Normaliza el correo a {@code trim().toLowerCase(Locale.ROOT)} (doc 02
+     * "Convenciones", CA-R02.9, CA-R04.5). Punto único para que creación,
+     * conteo de activas y consulta comparen siempre el mismo valor.
+     */
+    static String normalizarCorreo(String correo) {
+        return correo == null ? null : correo.trim().toLowerCase(Locale.ROOT);
     }
 
     /**

@@ -44,4 +44,17 @@ public record ReservaCreacionDto(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate fechaFin
 ) {
+
+    /**
+     * CA-R02.9: el correo se normaliza ({@code trim} + minúsculas) al
+     * deserializar, <em>antes</em> de Bean Validation, para que
+     * {@code "  Ada@Example.COM  "} sea válido y se persista como
+     * {@code "ada@example.com"}. El servicio vuelve a normalizar como
+     * defensa (también lo usa el GET por correo).
+     */
+    public ReservaCreacionDto {
+        if (correo != null) {
+            correo = correo.trim().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
 }

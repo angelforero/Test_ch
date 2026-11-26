@@ -122,6 +122,44 @@ class ReservationServiceTest {
     }
 
     @Test
+    @DisplayName("CA-R02.9: crear persiste el correo normalizado (trim + minúsculas)")
+    void crear_normalizaCorreo() {
+        given(herramientaRepository.findById(10L)).willReturn(Optional.of(herramientaConId(10L)));
+        given(reservaRepository.countActivasByCorreo("ada@example.com", HOY)).willReturn(0L);
+        given(reservaRepository.findSolapadas(anyLong(), any(), any())).willReturn(List.of());
+        given(reservaRepository.save(any(Reserva.class))).willAnswer(inv -> inv.getArgument(0));
+
+        ReservaDto dto = service.crear(new ReservaCreacionDto(
+                10L, "Ada", "  Ada@Example.COM  ", HOY.plusDays(1), HOY.plusDays(2)));
+
+        assertThat(dto.correo()).isEqualTo("ada@example.com");
+    }
+
+    @Test
+    @DisplayName("CA-R04.5: el límite de activas se cuenta con el correo normalizado")
+    void crear_limiteActivas_correoConMayusculas_lanza() {
+        given(herramientaRepository.findById(10L)).willReturn(Optional.of(herramientaConId(10L)));
+        given(reservaRepository.countActivasByCorreo("ada@example.com", HOY)).willReturn(3L);
+
+        assertThatThrownBy(() -> service.crear(new ReservaCreacionDto(
+                10L, "Ada", "ADA@EXAMPLE.COM", HOY.plusDays(1), HOY.plusDays(2))))
+                .isInstanceOf(LimiteReservasActivasException.class);
+
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("listarPorCorreo consulta con el correo normalizado")
+    void listarPorCorreo_normalizaCorreo() {
+        given(reservaRepository.findByCorreoOrderByFechaInicioDesc("ada@example.com"))
+                .willReturn(List.of());
+
+        assertThat(service.listarPorCorreo(" ADA@example.com ")).isEmpty();
+
+        verify(reservaRepository).findByCorreoOrderByFechaInicioDesc("ada@example.com");
+    }
+
+    @Test
     @DisplayName("crear con solape lanza SolapamientoReserva")
     void crear_solape_lanza() {
         given(herramientaRepository.findById(10L)).willReturn(Optional.of(herramientaConId(10L)));
